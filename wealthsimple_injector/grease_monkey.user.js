@@ -273,6 +273,8 @@
       setButtonOffline(btn);
     }
 
+    const MIN_LOADING_MS = 4000;
+
     btn.addEventListener('click', async () => {
       // Re-check health right before firing
       const healthy = await checkHealth();
@@ -283,11 +285,19 @@
 
       setButtonLoading(btn);
       startLoadingCard(section);
+      const startedAt = Date.now();
 
       const task = [
         heading ? `Company: ${heading}` : '',
         body    ? `About: ${body}`      : '',
       ].filter(Boolean).join('\n');
+
+      const ensureMinLoading = async () => {
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < MIN_LOADING_MS) {
+          await new Promise(r => setTimeout(r, MIN_LOADING_MS - elapsed));
+        }
+      };
 
       try {
         const res = await fetch(RUN_URL, {
@@ -299,9 +309,11 @@
         if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
         const data = await res.json();
+        await ensureMinLoading();
         showResultInCard(section, data.result ?? 'No result returned.');
       } catch (err) {
         console.error('[AboutScript] Research failed:', err);
+        await ensureMinLoading();
         showResultInCard(section, `Research failed: ${err.message}`, true);
       } finally {
         setButtonIdle(btn);
