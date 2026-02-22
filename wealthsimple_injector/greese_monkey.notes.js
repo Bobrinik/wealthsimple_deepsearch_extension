@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Wealthsimple Notes Panel
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.4
 // @description  Adds a notes panel on the left side of Wealthsimple security detail pages
 // @author       You
 // @match        https://my.wealthsimple.com/app/security-details/*
-// @grant        GM_addStyle
+// @grant        none
 // @run-at       document-start
 // ==/UserScript==
 
@@ -163,79 +163,151 @@
         margin-left: 300px !important;
         transition: margin-left 0.25s ease;
       }
+
+      /* =========================
+         MODAL
+      ========================= */
+      #ws-notes-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        z-index: 100001;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      #ws-notes-modal-backdrop.open { display: flex; }
+
+      #ws-notes-modal {
+        width: min(900px, 96vw);
+        max-height: min(82vh, 900px);
+        background: #141414;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      #ws-notes-modal-header {
+        padding: 14px 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      #ws-notes-modal-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 650;
+        color: #f5f4f4;
+        line-height: 1.25;
+      }
+      #ws-notes-modal-sub {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #94908d;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      #ws-notes-modal-actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .ws-notes-modal-btn {
+        background: #1f1f1f;
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #f5f4f4;
+        border-radius: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 1;
+      }
+      .ws-notes-modal-btn:hover { background: #2a2a2a; }
+      #ws-notes-modal-delete { color: #e57373; }
+      #ws-notes-modal-delete:hover { background: rgba(229,115,115,0.15); }
+      #ws-notes-modal-view-company { text-decoration: none; }
+
+      #ws-notes-modal-body {
+        padding: 14px 16px 18px;
+        overflow: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #333 transparent;
+      }
+      #ws-notes-modal-body::-webkit-scrollbar { width: 8px; }
+      #ws-notes-modal-body::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+      #ws-notes-modal-content {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 13px;
+        line-height: 1.55;
+        color: #e7e5e5;
+      }
     `;
     (document.head || document.documentElement).appendChild(STYLE);
   
     // =========================================================
-    //  DATA — generate 100 sample notes
+    //  DATA — fetch saved deep search results from server
     // =========================================================
-    const tags = ['buy','sell','hold','research','dividend','earnings','risk','general'];
-    const titles = [
-      'Q3 earnings beat expectations','Dividend increase announced','Fleet electrification opportunity',
-      'Valuation looks stretched','Strong revenue growth trend','Management guidance raised',
-      'Competitor analysis update','Technical breakout above $33','Insider buying activity',
-      'Debt reduction progress','New client contract signed','Margin expansion continues',
-      'Sector rotation risk','Interest rate sensitivity','Share buyback program active',
-      'Analyst upgrade from TD','ESG rating improved','Free cash flow strong',
-      'Supply chain headwinds easing','P/E ratio vs peers comparison','EV transition tailwinds',
-      'Quarterly dividend reinvested','Position sizing review','Stop-loss level adjustment',
-      'Earnings call key takeaways','Revenue per vehicle increasing','Operating leverage kicking in',
-      'Watch for next ex-div date','Tariff impact assessment','Currency hedge considerations',
-      'Book value per share growing','Customer retention rate high','Technology platform upgrade',
-      'Acquisition pipeline rumors','Capital allocation strategy','ROE trending above 18%',
-      'Organic growth acceleration','Fleet size expansion noted','Cost synergies realized',
-      'Institutional ownership up','Short interest declining','Options activity unusual',
-      'Resistance at $38 level','Support zone near $30','Moving average crossover',
-      'RSI approaching overbought','Volume spike analysis','Sector ETF correlation check',
-      'Tax-loss harvesting candidate','DRIP reinvestment tracked',
-    ];
-    const previews = [
-      'Element reported EPS of $0.32 vs expected $0.28. Revenue came in at $580M above consensus...',
-      'Board approved a 15% increase in quarterly dividend to $0.13 per share reflecting confidence...',
-      'Fleet management companies stand to benefit from the EV transition as fleet operators need guidance...',
-      'At 22.8x P/E the stock is trading above its 5-year average of 18x. Need continued growth...',
-      'Revenue has grown at a 12% CAGR over the past 3 years. Recurring revenue model provides visibility...',
-      'Management raised full-year guidance by 5% on strong demand for fleet optimization services...',
-      'ARI and Wheels Donlen are closest competitors. EFN has scale advantages with 1.5M+ vehicles...',
-      'Stock broke above $33 resistance on heavy volume. Next target is 52-week high of $38.26...',
-      'CEO purchased 50,000 shares on the open market at $31.50. CFO also bought 20,000 shares...',
-      'Net debt to EBITDA improved from 3.2x to 2.8x. Company targeting 2.5x by year-end...',
-      'Signed multi-year agreement with Fortune 500 company for 15,000 vehicles. Estimated annual...',
-      'Operating margins expanded 150bps YoY driven by technology platform efficiencies and scale...',
-      'Growth to value rotation could pressure the stock short-term. Monitor sector flows closely...',
-      'Rising rates increase borrowing costs for fleet financing. Each 25bps hike impacts margins...',
-      'Company has repurchased $150M worth of shares YTD under the NCIB program. Accretive to EPS...',
-      'TD Securities raised target to $40 from $36 citing improved fleet demand and margin trajectory...',
-      'MSCI upgraded ESG rating from BBB to A which could attract more institutional capital flows...',
-      'FCF yield of 6.2% compares favorably to peers. Strong conversion ratio of 85% from op CF...',
-      'Chip shortages easing which means faster vehicle deliveries and reduced order backlogs...',
-      'EFN trades at 22.8x vs peer average of 20x but has superior growth. Premium may be warranted...',
-    ];
-  
-    function rndDate(daysBack) {
-      const d = new Date(); d.setDate(d.getDate() - Math.floor(Math.random() * daysBack)); return d;
+    const API_BASE = 'http://localhost:8000';
+    const NOTES_URL = API_BASE + '/notes';
+
+    function stripHtml(html) {
+      if (typeof html !== 'string') return '';
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      return (div.textContent || div.innerText || '').trim();
     }
-    function fmt(d) {
+
+    function formatDate(createdAt) {
+      if (!createdAt) return '';
+      const d = new Date(createdAt);
+      if (isNaN(d.getTime())) return createdAt;
       const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       return m[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
     }
-    function makeNotes(n) {
-      const out = [];
-      for (let i = 0; i < n; i++) {
-        const d = rndDate(365);
-        out.push({
-          title: titles[i % titles.length] + (i >= titles.length ? ' (#' + (i+1) + ')' : ''),
-          preview: previews[i % previews.length],
-          tag: tags[i % tags.length],
-          date: d, dateStr: fmt(d),
-          pinned: i < 3,
+
+    async function fetchNotes() {
+      try {
+        const res = await fetch(NOTES_URL, { method: 'GET', signal: AbortSignal.timeout(10000) });
+        if (!res.ok) return { error: 'Server returned ' + res.status };
+        const data = await res.json();
+        const raw = (data && data.notes) ? data.notes : [];
+        const notes = raw.map(function(n) {
+          const fullText = stripHtml(n.result || '');
+          var preview = fullText.replace(/\s+/g, ' ').slice(0, 120);
+          if (preview.length === 120) preview += '...';
+          return {
+            cache_key: n.cache_key || '',
+            title: (n.cache_key || 'Unknown').trim(),
+            preview: preview || 'No preview',
+            content: fullText || 'No content',
+            tag: 'research',
+            dateStr: formatDate(n.created_at),
+            pinned: false,
+            sec_id: n.sec_id || null,
+          };
         });
+        return { notes: notes };
+      } catch (err) {
+        return { error: err && err.message ? err.message : 'Could not reach server' };
       }
-      out.sort((a,b) => (a.pinned&&!b.pinned?-1:!a.pinned&&b.pinned?1:b.date-a.date));
-      return out;
     }
-  
-    const notes = makeNotes(100);
+
+    function getSymbolFromUrl() {
+      var match = /\/app\/security-details\/([^/?#]+)/.exec(location.pathname);
+      return match ? match[1] : '';
+    }
   
     // =========================================================
     //  DOM INJECTION — wait for #root to appear, then inject
@@ -243,30 +315,175 @@
     function injectPanel() {
       // Guard: only inject once
       if (document.getElementById('ws-notes-panel')) return;
-  
+
+      var symbol = getSymbolFromUrl();
+
       // --- Toggle button ---
       const toggle = document.createElement('button');
       toggle.id = 'ws-notes-toggle';
       toggle.innerHTML = '☰';
       toggle.title = 'Toggle notes panel';
       document.body.appendChild(toggle);
-  
+
       // --- Panel ---
       const panel = document.createElement('div');
       panel.id = 'ws-notes-panel';
       panel.innerHTML =
         '<div id="ws-notes-header">' +
           '<h2>\u{1F4DD} Notes</h2>' +
-          '<p>' + notes.length + ' notes \u00B7 EFN</p>' +
+          '<p id="ws-notes-subtitle">Loading…</p>' +
         '</div>' +
         '<input id="ws-notes-search" type="text" placeholder="Search notes..." />' +
         '<div id="ws-notes-list"></div>';
       document.body.appendChild(panel);
-  
+
+      // --- Modal (create once) ---
+      function ensureModal() {
+        if (document.getElementById('ws-notes-modal-backdrop')) return;
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'ws-notes-modal-backdrop';
+        backdrop.innerHTML =
+          '<div id="ws-notes-modal" role="dialog" aria-modal="true" aria-label="Note details">' +
+            '<div id="ws-notes-modal-header">' +
+              '<div>' +
+                '<h3 id="ws-notes-modal-title"></h3>' +
+                '<div id="ws-notes-modal-sub"></div>' +
+              '</div>' +
+              '<div id="ws-notes-modal-actions">' +
+                '<a class="ws-notes-modal-btn" id="ws-notes-modal-view-company" href="#" style="display:none" title="Open company security details">View company</a>' +
+                '<button class="ws-notes-modal-btn" id="ws-notes-modal-delete" title="Delete note">Delete</button>' +
+                '<button class="ws-notes-modal-btn" id="ws-notes-modal-copy" title="Copy note">Copy</button>' +
+                '<button class="ws-notes-modal-btn" id="ws-notes-modal-close" title="Close">✕</button>' +
+              '</div>' +
+            '</div>' +
+            '<div id="ws-notes-modal-body">' +
+              '<div id="ws-notes-modal-content"></div>' +
+            '</div>' +
+          '</div>';
+
+        document.body.appendChild(backdrop);
+
+        // Close on backdrop click
+        backdrop.addEventListener('click', function(e) {
+          if (e.target === backdrop) closeModal();
+        });
+
+        // Close button
+        backdrop.querySelector('#ws-notes-modal-close').addEventListener('click', closeModal);
+
+        // Esc key
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') closeModal();
+        });
+
+        // Copy button
+        backdrop.querySelector('#ws-notes-modal-copy').addEventListener('click', async function() {
+          const txt = backdrop.querySelector('#ws-notes-modal-content').innerText || '';
+          const btn = this;
+          try {
+            await navigator.clipboard.writeText(txt);
+            var orig = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(function() { btn.textContent = orig; }, 1500);
+          } catch (_) {}
+        });
+
+        // Delete button — handler receives currentModalNote via closure set in openModal
+        backdrop.querySelector('#ws-notes-modal-delete').addEventListener('click', function() {
+          var note = backdrop.currentModalNote;
+          if (!note || !note.cache_key) return;
+          var deleteBtn = this;
+          deleteBtn.disabled = true;
+          deleteBtn.textContent = 'Deleting…';
+          fetch(API_BASE + '/notes/' + encodeURIComponent(note.cache_key), { method: 'DELETE' })
+            .then(function(res) {
+              if (res.status === 404) throw new Error('Note not found');
+              if (!res.ok) throw new Error('Delete failed');
+              closeModal();
+              notes = notes.filter(function(n) { return n.cache_key !== note.cache_key; });
+              var q = (panel.querySelector('#ws-notes-search') && panel.querySelector('#ws-notes-search').value || '').toLowerCase();
+              render(q ? notes.filter(function(n) {
+                return n.title.toLowerCase().indexOf(q) !== -1 ||
+                       n.preview.toLowerCase().indexOf(q) !== -1 ||
+                       (n.tag && n.tag.indexOf(q) !== -1);
+              }) : notes);
+              updateSubtitle(notes.length, null);
+            })
+            .catch(function(err) {
+              deleteBtn.disabled = false;
+              deleteBtn.textContent = 'Delete';
+              alert(err && err.message ? err.message : 'Could not delete note');
+            });
+        });
+      }
+
+      function openModal(note) {
+        ensureModal();
+        const backdrop = document.getElementById('ws-notes-modal-backdrop');
+        backdrop.currentModalNote = note;
+        var deleteBtn = backdrop.querySelector('#ws-notes-modal-delete');
+        if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete'; }
+        const titleEl = backdrop.querySelector('#ws-notes-modal-title');
+        const subEl = backdrop.querySelector('#ws-notes-modal-sub');
+        const contentEl = backdrop.querySelector('#ws-notes-modal-content');
+
+        titleEl.textContent = note.title || 'Note';
+
+        // View company button: use note's sec_id, or current page sec_id when on security-details (for notes cached without sec_id)
+        const viewCompanyEl = backdrop.querySelector('#ws-notes-modal-view-company');
+        if (viewCompanyEl) {
+          var secId = note.sec_id || getSymbolFromUrl();
+          if (secId) {
+            viewCompanyEl.href = 'https://my.wealthsimple.com/app/security-details/' + encodeURIComponent(secId);
+            viewCompanyEl.style.display = '';
+          } else {
+            viewCompanyEl.href = '#';
+            viewCompanyEl.style.display = 'none';
+          }
+        }
+
+        // tag + date
+        subEl.innerHTML = '';
+        const tag = document.createElement('span');
+        tag.className = 'ws-note-tag ' + (note.tag || 'general');
+        tag.textContent = note.tag || 'general';
+        const date = document.createElement('span');
+        date.textContent = note.dateStr || '';
+
+        subEl.appendChild(tag);
+        subEl.appendChild(date);
+
+        // IMPORTANT: render as text (not HTML) to avoid XSS
+        contentEl.textContent = note.content || note.preview || '';
+
+        backdrop.classList.add('open');
+      }
+
+      function closeModal() {
+        const backdrop = document.getElementById('ws-notes-modal-backdrop');
+        if (backdrop) backdrop.classList.remove('open');
+      }
+
       const list = panel.querySelector('#ws-notes-list');
-  
+      const subtitle = panel.querySelector('#ws-notes-subtitle');
+      var notes = [];
+
+      function updateSubtitle(count, err) {
+        if (err) {
+          subtitle.textContent = err;
+          return;
+        }
+        var sym = symbol ? ' · ' + symbol : '';
+        subtitle.textContent = count + ' note' + (count !== 1 ? 's' : '') + sym;
+      }
+
       function render(arr) {
         list.innerHTML = '';
+        if (arr.length === 0) {
+          list.innerHTML = '<div class="ws-note-item" style="color:#94908d;cursor:default;">No notes to show</div>';
+          return;
+        }
         arr.forEach(function(note, idx) {
           const item = document.createElement('div');
           item.className = 'ws-note-item' + (note.pinned ? ' pinned' : '');
@@ -278,6 +495,9 @@
               '<span>' + note.dateStr + '</span>' +
             '</div>';
           list.appendChild(item);
+          item.addEventListener('click', function() {
+            openModal(note);
+          });
           if (idx < arr.length - 1) {
             const div = document.createElement('div');
             div.className = 'ws-note-divider';
@@ -285,22 +505,33 @@
           }
         });
       }
-  
-      render(notes);
-  
+
+      list.innerHTML = '<div class="ws-note-item" style="color:#94908d;cursor:default;">Loading notes…</div>';
+      (async function() {
+        const result = await fetchNotes();
+        if (result.error) {
+          updateSubtitle(0, result.error);
+          list.innerHTML = '<div class="ws-note-item" style="color:#94908d;cursor:default;">' + result.error + '</div>';
+          return;
+        }
+        notes = result.notes || [];
+        updateSubtitle(notes.length, null);
+        render(notes);
+      })();
+
       panel.querySelector('#ws-notes-search').addEventListener('input', function() {
         const q = this.value.toLowerCase();
         render(q ? notes.filter(function(n) {
           return n.title.toLowerCase().indexOf(q) !== -1 ||
                  n.preview.toLowerCase().indexOf(q) !== -1 ||
-                 n.tag.indexOf(q) !== -1;
+                 (n.tag && n.tag.indexOf(q) !== -1);
         }) : notes);
       });
-  
+
       // --- Toggle ---
       let open = true;
       document.body.classList.add('ws-notes-open');
-  
+
       toggle.addEventListener('click', function() {
         open = !open;
         panel.classList.toggle('collapsed', !open);

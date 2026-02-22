@@ -60,6 +60,13 @@
     };
   }
 
+  /** Extract sec-id from page URL (e.g. sec-s-159a99834ea34fdbb66c05700828da52 from .../security-details/sec-s-...) */
+  function getSecIdFromUrl() {
+    const path = typeof window !== 'undefined' && window.location ? window.location.pathname : '';
+    const match = path.match(/\/security-details\/(sec-s-[a-f0-9]+)/i);
+    return match ? match[1] : null;
+  }
+
   // ── Styles ────────────────────────────────────────────────────────────────────
 
   function injectStyles() {
@@ -299,11 +306,13 @@
         }
       };
 
+      const secId = getSecIdFromUrl();
+
       try {
         const res = await fetch(RUN_URL, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ task }),
+          body:    JSON.stringify({ task, sec_id: secId }),
         });
 
         if (!res.ok) throw new Error(`Server responded ${res.status}`);
