@@ -102,6 +102,12 @@ curl -X POST http://localhost:8000/run \
 - `GET /health` – health check
 - `POST /run` – body `{"task": "your question"}` → `{"result": "..."}`
 
+### Caching (SQLite)
+
+Deep Search responses are cached in a local SQLite database keyed by **company** (parsed from the task’s `Company: ...` line). The next time you click Deep Research for the same company, the server returns the cached result instead of running the agent again.
+
+- **Database location:** `data/deep_search.db` in the project root (created automatically). Override with `DEEPSEARCH_DB_PATH` (e.g. `export DEEPSEARCH_DB_PATH=/path/to/deep_search.db`).
+
 ## Models
 
 ### Gemini / gemini-2.0-flash
