@@ -172,6 +172,10 @@ Follow the same approach as [Wealthsimple Utilities](https://github.com/Bobrinik
 4. Save the script.
 5. Ensure the agent server is running, then go to the Wealthsimple site (or a matching page). The injected “Deep Research” button should appear where the script places it (e.g. under the About section).
 
+## Architecture
+
+See [`architecture.md`](architecture.md) for a full component map, data flow, API surface, and rendered system diagram.
+
 ## Project layout
 
 - **`app/`** – Python application package:

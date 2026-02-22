@@ -1,0 +1,74 @@
+digraph wealthsimple_deepsearch {
+    rankdir=LR;
+    node [fontname="Helvetica", fontsize=11, shape=box, style=filled];
+
+    // ── Browser layer ──────────────────────────────────────────────
+    subgraph cluster_browser {
+        label="Browser";
+        style=filled; fillcolor="#f0f4ff";
+        WS   [label="Wealthsimple\n(stock page)", fillcolor="#dce8ff"];
+        GM   [label="Greasemonkey\nuserscript",   fillcolor="#c8daff"];
+        UI   [label="About section\n(injected HTML)", fillcolor="#dce8ff"];
+    }
+
+    // ── Server layer ────────────────────────────────────────────────
+    subgraph cluster_server {
+        label="Local Server  (localhost:8000)";
+        style=filled; fillcolor="#fff7e6";
+        API    [label="FastAPI\n/health  /run",  fillcolor="#ffe0a0"];
+        CACHE  [label="SQLite Cache\n(cache.py)", fillcolor="#ffe0a0", shape=cylinder];
+    }
+
+    // ── Agent layer ─────────────────────────────────────────────────
+    subgraph cluster_agent {
+        label="Smolagents CodeAgent";
+        style=filled; fillcolor="#eef7ee";
+        AGENT  [label="CodeAgent\n(main.py)",          fillcolor="#b8e0b8"];
+        PROMPT [label="System Prompt\n(prompt.py)",     fillcolor="#d0edd0", shape=note];
+    }
+
+    // ── Tool layers ─────────────────────────────────────────────────
+    subgraph cluster_search {
+        label="Search Tools";
+        style=filled; fillcolor="#fdf0ff";
+        PERP [label="Perplexity API\n(scoped + generic)", fillcolor="#e8ccff"];
+        DDG  [label="DuckDuckGo",                         fillcolor="#e8ccff"];
+    }
+
+    subgraph cluster_finance {
+        label="Financial Tools (yfinance)";
+        style=filled; fillcolor="#fff0f0";
+        YF   [label="yfinance\n(19 tools)", fillcolor="#ffc8c8"];
+    }
+
+    subgraph cluster_claude {
+        label="Claude Tools (Anthropic)";
+        style=filled; fillcolor="#f0f8ff";
+        HYPO [label="Hypothesis\nGenerator",   fillcolor="#b0d8ff"];
+        FMT  [label="HTML Output\nFormatter",  fillcolor="#b0d8ff"];
+    }
+
+    // ── Gradio (alternate entry) ─────────────────────────────────────
+    GRADIO [label="Gradio UI\n(localhost:7860)", fillcolor="#f5f5f5", shape=box];
+
+    // ── Edges ────────────────────────────────────────────────────────
+    WS   -> GM    [label="page load"];
+    GM   -> API   [label="GET /health\nPOST /run"];
+    API  -> UI    [label="injected result"];
+
+    API  -> CACHE [label="lookup"];
+    CACHE -> API  [label="hit / miss", style=dashed];
+    API  -> AGENT [label="cache miss\n→ run task"];
+    PROMPT -> AGENT [style=dashed, arrowhead=none];
+
+    AGENT -> PERP  [label="search"];
+    AGENT -> DDG   [label="search"];
+    AGENT -> YF    [label="financials"];
+    AGENT -> HYPO  [label="hypothesis"];
+    AGENT -> FMT   [label="format HTML"];
+
+    AGENT -> CACHE [label="store result"];
+    AGENT -> API   [label="return result", style=dashed];
+
+    GRADIO -> AGENT [label="interactive\ntesting", style=dotted];
+}
