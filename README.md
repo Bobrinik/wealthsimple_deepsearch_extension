@@ -14,6 +14,7 @@
    export ANTHROPIC_API_KEY="your-anthropic-api-key"
    export PERPLEXITY_API_KEY="your-perplexity-api-key"
    export GOOGLE_API_KEY="your-google-api-key"
+   export FMP_API_KEY="your-fmp-api-key"
    ```
 
    Or create a `.env` file in the project root with:
@@ -22,9 +23,10 @@
    ANTHROPIC_API_KEY=your-anthropic-api-key
    PERPLEXITY_API_KEY=your-perplexity-api-key
    GOOGLE_API_KEY=your-google-api-key
+   FMP_API_KEY=your-fmp-api-key
    ```
 
-   The Perplexity key is used by the `scoped_perplexity_search` tool. The Google key is used by the agent’s LiteLLM model (Gemini). See below for how to get each key.
+   The Perplexity key is used by the `scoped_perplexity_search` tool. The Google key is used by the agent’s LiteLLM model (Gemini). The FMP key is used by the server's `/news` endpoint. See below for how to get each key.
 
 ### How to get an Anthropic API key
 
@@ -56,6 +58,15 @@ The project uses the key with **Google AI Studio** (Gemini API). To get one:
 6. Set it in your environment or in a `.env` file as `GOOGLE_API_KEY=...`.
 
 If you prefer to use a key from **Google Cloud Console** instead: go to [APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials), create an API key, and enable the **Generative Language API** for the project.
+
+### How to get an FMP API key
+
+[Financial Modeling Prep](https://financialmodelingprep.com/) provides stock market data. To get a free API key:
+
+1. Go to **[Register](https://site.financialmodelingprep.com/register)** and create an account.
+2. Verify your email and sign in.
+3. Open the **[Developer Docs](https://site.financialmodelingprep.com/developer/docs)** — your API key is shown there (free tier: 250 requests/day).
+4. Set it in your environment or in a `.env` file as `FMP_API_KEY=...`.
 
 ## Run
 
