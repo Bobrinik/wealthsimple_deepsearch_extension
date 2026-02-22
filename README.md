@@ -83,7 +83,7 @@ make run-agent
 **Or with uv directly:**
 
 ```bash
-uv run python -m app.main
+uv run python -m app.agents.deep_research_agent
 ```
 
 ### FastAPI server (run-server)
@@ -99,7 +99,7 @@ make run-server
 **Or with uv directly:**
 
 ```bash
-uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Then call it with curl:
@@ -152,7 +152,7 @@ The **grease_monkey** userscript runs in the browser (e.g. on Wealthsimple) and 
                                  │         GET /health
                                  ▼
   ┌─────────────────────────────────────────────────────────────────┐
-  │  Agent server (uvicorn app.server:app --port 8000)                   │
+  │  Agent server (uvicorn app.main:app --port 8000)                   │
   │  ┌─────────────────────────────────────────────────────────────┐ │
   │  │  FastAPI  • /health  • /run                                  │ │
   │  │  CodeAgent (Gemini 2.0 Flash) + tools                         │ │
@@ -161,7 +161,7 @@ The **grease_monkey** userscript runs in the browser (e.g. on Wealthsimple) and 
   └─────────────────────────────────────────────────────────────────┘
 ```
 
-1. Install the userscript in Tampermonkey (or Greasemonkey) and ensure the agent server is running (`make run-server` or `uv run uvicorn app.server:app --host 0.0.0.0 --port 8000`).
+1. Install the userscript in Tampermonkey (or Greasemonkey) and ensure the agent server is running (`make run-server` or `uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`).
 2. Open a matching page; the script injects the button and checks `/health` to confirm the server is up.
 3. User triggers Deep Research; the script sends the task to `POST /run` and displays the agent’s response.
 
@@ -190,15 +190,17 @@ See [`architecture.md`](architecture.md) for a full component map, data flow, AP
 ## Project layout
 
 - **`app/`** – Python application package:
-  - **`main.py`** – Agent driver: LiteLLMModel (Gemini 2.0 Flash), CodeAgent, and Gradio UI.
-  - **`server.py`** – FastAPI app for headless agent: `GET /health`, `POST /run`.
+  - **`main.py`** – FastAPI app for headless agent: `GET /health`, `POST /run`.
   - **`prompt.py`** – System prompt and instructions for the agent.
-  - **`agent_tools.py`** – Custom tools: `scoped_perplexity_search`, `generic_search`, `generate_deep_research_hypothesis`, `output_formatter`.
-  - **`yfinance_tools.py`** – yfinance tools (each takes a `ticker`, e.g. AAPL, RY.TO):
-    - `ticker_history`, `ticker_info`, `ticker_dividends`, `ticker_splits`, `ticker_calendar`
-    - `ticker_financials`, `ticker_quarterly_financials`, `ticker_balance_sheet`, `ticker_quarterly_balance_sheet`
-    - `ticker_cashflow`, `ticker_quarterly_cashflow`, `ticker_institutional_holders`, `ticker_sustainability`
-    - `ticker_options`, `ticker_option_chain`, `ticker_download`
+  - **`agents/`** – Agent driver and tools:
+    - **`deep_research_agent.py`** – CodeAgent (Gemini 2.0 Flash) + Gradio UI entry point.
+    - **`tools/`** – Tool package:
+      - **`agent_tools.py`** – Custom tools: `scoped_perplexity_search`, `generic_search`, `generate_deep_research_hypothesis`, `output_formatter`.
+      - **`yfinance_tools.py`** – yfinance tools (each takes a `ticker`, e.g. AAPL, RY.TO):
+        - `ticker_history`, `ticker_info`, `ticker_dividends`, `ticker_splits`, `ticker_calendar`
+        - `ticker_financials`, `ticker_quarterly_financials`, `ticker_balance_sheet`, `ticker_quarterly_balance_sheet`
+        - `ticker_cashflow`, `ticker_quarterly_cashflow`, `ticker_institutional_holders`, `ticker_sustainability`
+        - `ticker_options`, `ticker_option_chain`, `ticker_download`
   - **`test_yfinance_tools.py`** – Test script for yfinance tools.
 - **`wealthsimple_injector/`** – Browser userscript that injects the Deep Research UI and calls the agent server:
   - **`grease_monkey.user.js`** – Tampermonkey/Greasemonkey script; install in your browser to use on Wealthsimple (see [Installing the script](#installing-the-script-in-your-browser)).

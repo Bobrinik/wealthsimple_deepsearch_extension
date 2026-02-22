@@ -26,13 +26,13 @@ Browser (Wealthsimple)
 | Component | File(s) | Role |
 |-----------|---------|------|
 | Browser userscript | `wealthsimple_injector/grease_monkey.user.js` | DOM injection, health check, API calls |
-| FastAPI server | `app/server.py` | HTTP entry point, cache orchestration |
-| Gradio UI | `app/main.py` | Interactive testing interface |
-| Agent setup | `app/main.py` | CodeAgent + LiteLLM model init |
+| FastAPI server | `app/main.py` | HTTP entry point, routers |
+| Gradio UI | `app/agents/deep_research_agent.py` | Interactive testing interface |
+| Agent setup | `app/agents/deep_research_agent.py` | CodeAgent + LiteLLM model init |
 | System prompt | `app/prompt.py` | Agent instructions + research workflow |
-| Custom tools | `app/agent_tools.py` | Perplexity search, Claude hypothesis/formatting |
-| Financial tools | `app/yfinance_tools.py` | 19 yfinance wrappers |
-| Cache | `app/cache.py` | SQLite read/write by company name |
+| Custom tools | `app/agents/tools/agent_tools.py` | Perplexity search, Claude hypothesis/formatting |
+| Financial tools | `app/agents/tools/yfinance_tools.py` | 19 yfinance wrappers |
+| Cache | `app/services/note_service.py`, `app/db/database.py` | SQLite read/write by company name |
 
 ---
 
