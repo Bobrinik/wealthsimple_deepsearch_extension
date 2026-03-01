@@ -38,12 +38,18 @@
       }
     });
   
-    // ── Extract ticker from URL e.g. /app/security-details/NYSE-WCP ──
-    function getTicker() {
+    // ── Extract sec_id from URL e.g. /app/security-details/NYSE-WCP or sec-s-xxx ──
+    function getSecIdFromUrl() {
       const m = location.pathname.match(/security-details\/([^/?#]+)/);
-      if (!m) return 'STOCK';
-      const parts = m[1].split('-');
-      return parts.length > 1 ? parts.slice(1).join('-') : m[1];
+      return m ? m[1] : null;
+    }
+
+    // Short display ticker (e.g. WCP) — strip exchange prefix from sec_id when present.
+    function getTicker() {
+      const secId = getSecIdFromUrl();
+      if (!secId) return 'STOCK';
+      const parts = secId.split('-');
+      return parts.length > 1 ? parts.slice(1).join('-') : secId;
     }
   
     // ── Scrape company name from the page header DOM ──
@@ -60,7 +66,7 @@
       } catch (_) { return ''; }
     }
   
-    function buildHTML(ticker, companyName) {
+    function buildHTML(ticker, companyName, secId) {
       const storageKey = `ws-annot-${ticker}`;
       return `<!DOCTYPE html>
   <html lang="en">
@@ -337,6 +343,24 @@
     }
     #btn-done:hover { opacity: 0.85; }
   
+    #btn-delete {
+      background: none;
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: #e57373;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s;
+      flex-shrink: 0;
+      white-space: nowrap;
+      margin-right: 8px;
+    }
+    #btn-delete:hover { background: rgba(229,115,115,0.15); }
+    #btn-delete.hidden { display: none; }
+  
     /* ── Modals ── */
     .modal-overlay {
       position: fixed; inset: 0;
@@ -470,6 +494,7 @@
         <svg viewBox="0 0 24 24"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 1.96C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="var(--bg)"/></svg>
       </button>
       <div id="tb-spacer"></div>
+      <button id="btn-delete" class="hidden" title="Delete note">Delete</button>
       <button id="btn-done">Save</button>
     </div>
   
@@ -480,6 +505,7 @@
   const API_BASE = 'http://localhost:8000';
   const TICKER = ${JSON.stringify(ticker)};
   const COMPANY_NAME = ${JSON.stringify(companyName || '')};
+  const SEC_ID = ${JSON.stringify(secId != null ? secId : '')};
   const editor = document.getElementById('editor');
   let saveTimer = null;
   let savedRange = null;
@@ -495,6 +521,8 @@
       var lbl = document.getElementById('ticker-label');
       if (lbl && e.data.title) lbl.textContent = e.data.title;
       document.querySelectorAll('.img-remove, .vid-remove').forEach(attachRemoveBtn);
+      var deleteBtn = document.getElementById('btn-delete');
+      if (deleteBtn) deleteBtn.classList.remove('hidden');
     }
     if (e.data && e.data.source === 'ws-annot' && e.data.action === 'initNew') {
       initSignalReceived = true;
@@ -516,7 +544,7 @@
       savePromise = fetch(API_BASE + '/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: TICKER, company_name: COMPANY_NAME || null, content: html, sec_id: null })
+        body: JSON.stringify({ ticker: TICKER, company_name: COMPANY_NAME || null, content: html, sec_id: SEC_ID || null })
       }).catch(function() {});
     }
     const ind = document.getElementById('save-indicator');
@@ -816,6 +844,23 @@
   document.getElementById('btn-close').addEventListener('click', function() {
     window.parent.postMessage({ source: 'ws-annot', action: 'close' }, '*');
   });
+  document.getElementById('btn-delete').addEventListener('click', function() {
+    if (!EDIT_EXISTING_CACHE_KEY) return;
+    var deleteBtn = this;
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = 'Deleting…';
+    fetch(API_BASE + '/notes/' + encodeURIComponent(EDIT_EXISTING_CACHE_KEY), { method: 'DELETE' })
+      .then(function(res) {
+        if (res.status === 404) throw new Error('Note not found');
+        if (!res.ok) throw new Error('Delete failed');
+        window.parent.postMessage({ source: 'ws-annot', action: 'close' }, '*');
+      })
+      .catch(function(err) {
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Delete';
+        alert(err && err.message ? err.message : 'Could not delete note');
+      });
+  });
   document.getElementById('btn-done').addEventListener('click', function() {
     var p = saveToParent(editor.innerHTML);
     Promise.resolve(p).then(function() {
@@ -844,7 +889,8 @@
 
       const ticker = existingNote ? (existingNote.ticker || getTicker()) : getTicker();
       const companyName = existingNote ? (existingNote.companyName || existingNote.title || getCompanyName()) : getCompanyName();
-      const htmlContent = buildHTML(ticker, companyName);
+      const secId = getSecIdFromUrl();
+      const htmlContent = buildHTML(ticker, companyName, secId);
       const blob = new Blob([htmlContent], { type: 'text/html' });
       const blobUrl = URL.createObjectURL(blob);
   

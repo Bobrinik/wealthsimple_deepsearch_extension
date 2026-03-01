@@ -157,6 +157,26 @@
         background: rgba(255,255,255,0.05);
         margin: 0 20px;
       }
+
+      /* Grouping by sec_id */
+      .ws-notes-sec-group {
+        margin-bottom: 4px;
+      }
+      .ws-notes-sec-group-header {
+        padding: 8px 20px 4px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #94908d;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: default;
+      }
+      .ws-note-item.ws-note-item--under-sec {
+        padding-left: 28px;
+      }
   
       /* Push the WS page content right when panel is open */
       body.ws-notes-open #root {
@@ -311,6 +331,27 @@
     function getSymbolFromUrl() {
       var match = /\/app\/security-details\/([^/?#]+)/.exec(location.pathname);
       return match ? match[1] : '';
+    }
+
+    /** Groups notes by sec_id. Returns array of { secId: string, notes: note[] }. */
+    function groupNotesBySecId(notes) {
+      var map = Object.create(null);
+      var order = [];
+      for (var i = 0; i < notes.length; i++) {
+        var n = notes[i];
+        var key = (n.sec_id && String(n.sec_id).trim()) || '\0other';
+        if (!map[key]) {
+          map[key] = [];
+          order.push(key);
+        }
+        map[key].push(n);
+      }
+      return order.map(function(key) {
+        return {
+          secId: key === '\0other' ? null : key,
+          notes: map[key]
+        };
+      });
     }
   
     // =========================================================
@@ -492,27 +533,44 @@
           list.innerHTML = '<div class="ws-note-item" style="color:#94908d;cursor:default;">No notes to show</div>';
           return;
         }
-        arr.forEach(function(note, idx) {
-          const item = document.createElement('div');
-          item.className = 'ws-note-item' + (note.pinned ? ' pinned' : '');
-          item.innerHTML =
-            '<div class="ws-note-title"><span class="ws-note-pin">\u{1F4CC} </span>' + note.title + '</div>' +
-            '<div class="ws-note-preview">' + note.preview + '</div>' +
-            '<div class="ws-note-meta">' +
-              '<span class="ws-note-tag ' + note.tag + '">' + note.tag + '</span>' +
-              '<span>' + note.dateStr + '</span>' +
-            '</div>';
-          list.appendChild(item);
-          item.addEventListener('click', function() {
-            window.dispatchEvent(new CustomEvent('ws-open-note-edit', {
-              detail: {
-                cache_key: note.cache_key,
-                content: note.rawContent || note.content,
-                title: note.title
-              }
-            }));
+        var groups = groupNotesBySecId(arr);
+        groups.forEach(function(grp, groupIdx) {
+          var secLabel = grp.secId != null ? grp.secId : 'Other';
+          var groupWrap = document.createElement('div');
+          groupWrap.className = 'ws-notes-sec-group';
+          var header = document.createElement('div');
+          header.className = 'ws-notes-sec-group-header';
+          header.textContent = secLabel;
+          header.title = secLabel;
+          groupWrap.appendChild(header);
+          grp.notes.forEach(function(note, idx) {
+            const item = document.createElement('div');
+            item.className = 'ws-note-item' + (note.pinned ? ' pinned' : '') + ' ws-note-item--under-sec';
+            item.innerHTML =
+              '<div class="ws-note-title"><span class="ws-note-pin">\u{1F4CC} </span>' + note.title + '</div>' +
+              '<div class="ws-note-preview">' + note.preview + '</div>' +
+              '<div class="ws-note-meta">' +
+                '<span class="ws-note-tag ' + note.tag + '">' + note.tag + '</span>' +
+                '<span>' + note.dateStr + '</span>' +
+              '</div>';
+            groupWrap.appendChild(item);
+            item.addEventListener('click', function() {
+              window.dispatchEvent(new CustomEvent('ws-open-note-edit', {
+                detail: {
+                  cache_key: note.cache_key,
+                  content: note.rawContent || note.content,
+                  title: note.title
+                }
+              }));
+            });
+            if (idx < grp.notes.length - 1) {
+              const div = document.createElement('div');
+              div.className = 'ws-note-divider';
+              groupWrap.appendChild(div);
+            }
           });
-          if (idx < arr.length - 1) {
+          list.appendChild(groupWrap);
+          if (groupIdx < groups.length - 1) {
             const div = document.createElement('div');
             div.className = 'ws-note-divider';
             list.appendChild(div);
