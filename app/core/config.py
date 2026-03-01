@@ -14,4 +14,12 @@ def get_db_path() -> Path:
     return data_dir / "deep_search.db"
 
 
+def get_notes_images_dir() -> Path:
+    """Directory for note images (data URLs saved to disk)."""
+    root = Path(__file__).resolve().parent.parent.parent
+    d = root / "data" / "notes_images"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 FMP_NEWS_URL = os.environ.get("FMP_NEWS_URL", "https://financialmodelingprep.com/stable/news/stock")

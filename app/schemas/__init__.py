@@ -3,7 +3,7 @@
 from app.schemas.agent import TaskRequest, TaskResponse
 from app.schemas.health import HealthResponse
 from app.schemas.news import NewsItem
-from app.schemas.notes import CachedNote, NotesResponse
+from app.schemas.notes import CachedNote, CreateNoteRequest, NotesResponse, UpdateNoteRequest
 
 __all__ = [
     "TaskRequest",
@@ -11,5 +11,7 @@ __all__ = [
     "HealthResponse",
     "NewsItem",
     "CachedNote",
+    "CreateNoteRequest",
     "NotesResponse",
+    "UpdateNoteRequest",
 ]

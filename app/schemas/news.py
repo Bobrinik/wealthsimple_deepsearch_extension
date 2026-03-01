@@ -8,7 +8,6 @@ class NewsItem(BaseModel):
     publishedDate: str
     publisher: str
     title: str
-    image: str
     site: str
     text: str
     url: str

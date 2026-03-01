@@ -57,3 +57,30 @@ If you want to keep using `GM_xmlhttpRequest` (e.g. to avoid CORS or to use exte
 3. Use a fallback or try/catch so that if the API isn’t available you show an error instead of hanging on “Loading…”.
 
 Reference: the Notes panel was first implemented with `GM_xmlhttpRequest` and `@connect`; it was later switched to `fetch()` + `@grant none` to match the working Deep Research script (`grease_monkey.user.js`).
+
+---
+
+## ESM importmaps don’t work in blob iframes
+
+### The issue
+
+When you inject a third‑party app (e.g. Excalidraw) into the page by creating a **sandboxed iframe** whose document is served from a **blob URL**, the app may never mount and you get a blank canvas. The root cause is that **importmaps inside dynamically created blob URLs are unreliable** in sandboxed iframes across browsers. The script fails silently, so the canvas stays blank with no obvious error.
+
+### The solution: use UMD/global script builds
+
+Switch from ESM + importmap to **UMD builds** loaded via plain `<script>` tags from a CDN (e.g. unpkg.com). UMD scripts expose globals like `window.React`, `window.ReactDOM`, and `window.ExcalidrawLib`, which resolve correctly in any iframe and don’t depend on importmap resolution.
+
+- Load UMD scripts in the iframe document (e.g. React, ReactDOM, ExcalidrawLib) with `<script src="https://unpkg.com/...">` (or similar).
+- After the scripts load, use the globals to mount the app (e.g. `ReactDOM.createRoot(...).render(React.createElement(ExcalidrawLib.Excalidraw, ...))`).
+
+### Error handling
+
+If the UMD scripts fail to load (network block, CDN down, etc.), show a **visible error message** (e.g. red text in the iframe) instead of leaving a blank/black box. Otherwise failures are silent and hard to debug.
+
+### Drag for the panel
+
+If the panel has a header that should be draggable, `cursor: move` alone is not enough. Implement drag with **pointer events**: on the header use `pointerdown` → `setPointerCapture` and then `pointermove` / `pointerup` to update the panel position. This works reliably in userscript-injected UI.
+
+### Persistence limitation
+
+Without `allow-same-origin` on the iframe, the iframe has an **opaque origin** and cannot use `localStorage`. So drawings (or any state) inside the iframe won’t persist across page navigations. If you need persistence, the clean approach is **postMessage**: have the iframe send the app’s state (e.g. Excalidraw `onChange` payload) to the parent page, and let the parent store it in its own `localStorage` and re-inject it when the panel is opened again.

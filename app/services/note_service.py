@@ -1,7 +1,12 @@
 """Note/cache business logic."""
 
+import base64
 import json
+import re
+import uuid
+from pathlib import Path
 
+from app.core.config import get_notes_images_dir
 from app.db.database import DEFAULT_LABELS, get_conn
 
 
@@ -65,6 +70,20 @@ def delete_cached(cache_key: str) -> bool:
         conn.close()
 
 
+def update_cached(cache_key: str, result: str) -> bool:
+    """Update the result content for the given cache_key. Returns True if a row was updated."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE deep_search_cache SET result = ? WHERE cache_key = ?",
+            (result, cache_key),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
 def _parse_labels(raw: str | None) -> list[str]:
     if not raw or not raw.strip():
         return list(DEFAULT_LABELS)
@@ -119,3 +138,60 @@ def get_all_cached() -> list[dict]:
         ]
     finally:
         conn.close()
+
+
+# Data URL pattern: src="data:image/<subtype>;base64,<data>"
+_DATA_URL_PATTERN = re.compile(
+    r'(\bsrc=)(["\'])(data:image/([a-zA-Z0-9+.]+);base64,([^"\']+))\2',
+    re.IGNORECASE,
+)
+
+_MIME_EXT = {
+    "png": ".png",
+    "jpeg": ".jpg",
+    "jpg": ".jpg",
+    "gif": ".gif",
+    "webp": ".webp",
+    "svg+xml": ".svg",
+}
+
+
+def _extract_and_save_images(html: str, images_dir: Path) -> str:
+    """Replace data:image/... URLs in HTML with /notes/images/<filename>; save images to disk."""
+    def replacer(match: re.Match) -> str:
+        prefix, quote, _full, subtype, b64 = match.groups()
+        try:
+            data = base64.b64decode(b64, validate=True)
+        except Exception:
+            return match.group(0)
+        ext = _MIME_EXT.get(subtype.lower(), ".bin")
+        name = uuid.uuid4().hex + ext
+        path = images_dir / name
+        path.write_bytes(data)
+        return f'{prefix}{quote}/notes/images/{name}{quote}'
+    return _DATA_URL_PATTERN.sub(replacer, html)
+
+
+ANNOTATION_LABELS = ["annotation"]
+
+
+def save_annotation_note(
+    ticker: str,
+    content: str,
+    sec_id: str | None = None,
+    company_name: str | None = None,
+) -> str:
+    """
+    Save an annotation note (from add_note injector). Uses cache_key ws-annot-{ticker}.
+    Extracts inline images to disk and rewrites HTML. Returns cache_key.
+    """
+    cache_key = f"ws-annot-{ticker}"
+    images_dir = get_notes_images_dir()
+    processed = _extract_and_save_images(content, images_dir)
+    set_cached(
+        cache_key,
+        processed,
+        sec_id=sec_id,
+        labels=ANNOTATION_LABELS,
+    )
+    return cache_key
