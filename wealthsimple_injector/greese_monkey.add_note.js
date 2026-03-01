@@ -484,13 +484,21 @@
   let saveTimer = null;
   let savedRange = null;
   let EDIT_EXISTING_CACHE_KEY = null;
+  var initSignalReceived = false;
   window.addEventListener('message', function(e) {
     if (e.data && e.data.source === 'ws-annot' && e.data.action === 'initExisting') {
+      initSignalReceived = true;
       EDIT_EXISTING_CACHE_KEY = e.data.cache_key;
-      editor.innerHTML = e.data.content || '';
+      var html = e.data.content || '';
+      html = html.replace(/src=(["'])\\/notes\\/images\\//g, 'src=\$1' + API_BASE + '/notes/images/');
+      editor.innerHTML = html;
       var lbl = document.getElementById('ticker-label');
       if (lbl && e.data.title) lbl.textContent = e.data.title;
       document.querySelectorAll('.img-remove, .vid-remove').forEach(attachRemoveBtn);
+    }
+    if (e.data && e.data.source === 'ws-annot' && e.data.action === 'initNew') {
+      initSignalReceived = true;
+      editor.innerHTML = '';
     }
   });
 
@@ -533,11 +541,14 @@
     });
   }
   
-  loadFromParent().then(val => {
-    if (val) editor.innerHTML = val;
-    // Re-attach remove buttons
-    document.querySelectorAll('.img-remove, .vid-remove').forEach(attachRemoveBtn);
-  });
+  // Only load from storage when not opening a clean new note (initNew) or existing note (initExisting)
+  setTimeout(function() {
+    if (initSignalReceived) return;
+    loadFromParent().then(val => {
+      if (val) editor.innerHTML = val;
+      document.querySelectorAll('.img-remove, .vid-remove').forEach(attachRemoveBtn);
+    });
+  }, 150);
   
   // Auto-save on input
   editor.addEventListener('input', () => {
@@ -887,6 +898,13 @@
               content: existingNote.content || '',
               title: existingNote.title || ''
             }, '*');
+          } catch (_) {}
+        });
+      } else {
+        iframe.addEventListener('load', function onLoad() {
+          iframe.removeEventListener('load', onLoad);
+          try {
+            iframe.contentWindow.postMessage({ source: 'ws-annot', action: 'initNew' }, '*');
           } catch (_) {}
         });
       }
