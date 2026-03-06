@@ -72,13 +72,44 @@
     catch { return false; }
   }
 
-  function getSecId() {
-    const m = location.pathname.match(/\/security-details\/(sec-s-[a-f0-9]+)/i);
+  // ── Same sec_id / ticker as add_note (greese_monkey.add_note.js) ──
+  function getSecIdFromUrl() {
+    const m = location.pathname.match(/security-details\/([^/?#]+)/);
     return m ? m[1] : null;
   }
 
+  function getTickerFromPage() {
+    try {
+      for (const h2 of document.querySelectorAll('h2')) {
+        const m = h2.textContent.trim().match(/^About\s+(.+)/i);
+        if (m && m[1]) return m[1].trim();
+      }
+      const el = document.querySelector('[data-testid="security-logo-image"]');
+      if (el && el.alt) return el.alt.trim();
+    } catch (_) {}
+    return '';
+  }
+
+  function getTicker() {
+    const secId = getSecIdFromUrl();
+    if (!secId) return 'STOCK';
+    if (/^sec-s-/i.test(secId)) return getTickerFromPage() || secId;
+    const parts = secId.split('-');
+    return parts.length > 1 ? parts.slice(1).join('-') : secId;
+  }
+
+  function getCompanyName() {
+    try {
+      const btn = document.querySelector('[data-testid="watchlist-cta"]');
+      if (!btn) return '';
+      const plcCN = btn.closest('div')?.parentElement;
+      const nameP = plcCN?.parentElement?.querySelector('p:last-of-type');
+      return nameP?.textContent?.trim() || '';
+    } catch (_) { return ''; }
+  }
+
   function isSecurityPage() {
-    return /\/security-details\/sec-s-/.test(location.pathname);
+    return /\/security-details\//.test(location.pathname);
   }
 
   /* ── Find the About section ─────────────────────────────────── */
@@ -169,14 +200,37 @@
       const t0 = Date.now();
       const task = [heading ? `Company: ${heading}` : '', body ? `About: ${body}` : ''].filter(Boolean).join('\n');
       const minWait = async () => { const d = Date.now() - t0; if (d < 4000) await new Promise(r => setTimeout(r, 4000 - d)); };
-      const secId = getSecId();
+      const secId = getSecIdFromUrl();
+      const ticker = getTicker();
+      const companyName = getCompanyName();
       try {
         const res = await fetch(RUN_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ task, sec_id: secId }) });
         if (!res.ok) throw new Error(`Server ${res.status}`);
         const data = await res.json();
         await minWait();
-        showResult(section, data.result ?? 'No result returned.');
-        document.dispatchEvent(new CustomEvent('deep-search-result-received', { detail: { result: data.result, sec_id: secId } }));
+        const resultText = data.result ?? 'No result returned.';
+        showResult(section, resultText);
+        document.dispatchEvent(new CustomEvent('deep-search-result-received', { detail: { result: resultText, sec_id: secId } }));
+        // Save deep search as note same way as add_note: ws-annot-{ticker} with ticker + sec_id
+        if (secId && ticker && ticker !== 'STOCK') {
+          try {
+            const saveRes = await fetch(`${API_BASE}/notes`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ticker: ticker,
+                company_name: companyName || null,
+                content: resultText,
+                sec_id: secId,
+              }),
+            });
+            if (saveRes.ok) {
+              document.dispatchEvent(new CustomEvent('ws-note-saved'));
+            }
+          } catch (saveErr) {
+            warn('Failed to save deep search as note:', saveErr);
+          }
+        }
       } catch (e) {
         console.error('[AboutScript]', e);
         await minWait();
@@ -211,7 +265,7 @@
     // 1) Only act on security pages
     if (!isSecurityPage()) return;
 
-    const curSecId = getSecId();
+    const curSecId = getSecIdFromUrl();
 
     // 2) If sec-id changed, reset health cache and clean up
     if (curSecId !== lastSecId) {

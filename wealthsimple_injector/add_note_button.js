@@ -22,6 +22,9 @@
         let val = null;
         try { val = localStorage.getItem(key); } catch (_) {}
         e.source.postMessage({ source: 'ws-annot-reply', key, value: val }, '*');
+      } else if (action === 'note-saved') {
+        // Iframe cannot access parent.document (opaque origin); dispatch here so notes panel can refresh
+        document.dispatchEvent(new CustomEvent('ws-note-saved'));
       }
     });
 
@@ -31,7 +34,9 @@
         injectPanel({
           cache_key: e.detail.cache_key,
           content: e.detail.content != null ? e.detail.content : '',
-          title: e.detail.title || e.detail.cache_key
+          title: e.detail.title || e.detail.cache_key,
+          ticker: e.detail.ticker || null,
+          sec_id: e.detail.sec_id || null,
         });
         const btn = document.getElementById('ws-annot-toggle');
         if (btn && btn.getAttribute('role') === 'tab') setTabActive(btn, true);
@@ -44,10 +49,24 @@
       return m ? m[1] : null;
     }
 
-    // Short display ticker (e.g. WCP) — strip exchange prefix from sec_id when present.
+    /** When URL has sec-s-xxx (no ticker in path), scrape ticker from the page. */
+    function getTickerFromPage() {
+      try {
+        for (const h2 of document.querySelectorAll('h2')) {
+          const m = h2.textContent.trim().match(/^About\s+(.+)/i);
+          if (m && m[1]) return m[1].trim();
+        }
+        const el = document.querySelector('[data-testid="security-logo-image"]');
+        if (el && el.alt) return el.alt.trim();
+      } catch (_) {}
+      return '';
+    }
+
+    // Short display ticker: when sec_id is sec-s-xxx get it from the page; else strip exchange prefix.
     function getTicker() {
       const secId = getSecIdFromUrl();
       if (!secId) return 'STOCK';
+      if (/^sec-s-/i.test(secId)) return getTickerFromPage() || secId;
       const parts = secId.split('-');
       return parts.length > 1 ? parts.slice(1).join('-') : secId;
     }
@@ -135,31 +154,30 @@
     }
   
     #ticker-label {
+      flex: 1;
+      min-width: 0;
       display: flex;
-      align-items: baseline;
-      gap: 6px;
+      align-items: center;
+    }
+    #ticker-label-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
       font-family: 'IBM Plex Sans', sans-serif;
       font-size: 13px;
       font-weight: 600;
       letter-spacing: 0.02em;
       color: var(--text);
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      padding: 2px 4px;
+      margin: -2px -4px;
+      border-radius: 4px;
+      transition: background 0.15s;
     }
-    #ticker-label span {
-      font-family: 'IBM Plex Sans', sans-serif;
-      font-size: 11px;
-      font-weight: 400;
-      color: var(--muted);
-      letter-spacing: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  
+    #ticker-label-input:hover { background: rgba(255,255,255,0.06); }
+    #ticker-label-input:focus { background: rgba(255,255,255,0.08); }
+    #ticker-label-input::placeholder { color: var(--muted); }
+
     #save-indicator {
       font-size: 10px;
       color: var(--muted);
@@ -292,13 +310,15 @@
     #toolbar {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 1px;
+      row-gap: 6px;
       padding: 0 8px;
-      height: var(--toolbar-h);
+      min-height: var(--toolbar-h);
       background: var(--surface);
       border-top: 1px solid var(--border);
       flex-shrink: 0;
-      overflow: hidden;
+      overflow: visible;
     }
   
     .tb-btn {
@@ -326,6 +346,13 @@
       flex-shrink: 0;
     }
   
+    #tb-actions {
+      display: flex;
+      align-items: center;
+      margin-left: auto;
+      flex-shrink: 0;
+      gap: 8px;
+    }
     #tb-spacer { flex: 1; min-width: 4px; }
   
     #btn-done {
@@ -356,7 +383,6 @@
       transition: color 0.15s, background 0.15s;
       flex-shrink: 0;
       white-space: nowrap;
-      margin-right: 8px;
     }
     #btn-delete:hover { background: rgba(229,115,115,0.15); }
     #btn-delete.hidden { display: none; }
@@ -450,7 +476,9 @@
     <!-- Header -->
     <div id="header">
       <div id="ticker-icon" title="${String(ticker).replace(/"/g, '&quot;')}">◈</div>
-      <div id="ticker-label" title="${String(ticker).replace(/"/g, '&quot;')}">${companyName || ticker}</div>
+      <div id="ticker-label">
+        <input type="text" id="ticker-label-input" placeholder="${String(companyName || ticker).replace(/"/g, '&quot;')}" value="${String(companyName || ticker).replace(/"/g, '&quot;')}" maxlength="200" />
+      </div>
       <span id="save-indicator">—</span>
       <button id="btn-close" title="Close">
         <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round">
@@ -493,9 +521,11 @@
       <button class="tb-btn" id="tb-video" title="Embed YouTube video">
         <svg viewBox="0 0 24 24"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 1.96C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="var(--bg)"/></svg>
       </button>
-      <div id="tb-spacer"></div>
-      <button id="btn-delete" class="hidden" title="Delete note">Delete</button>
-      <button id="btn-done">Save</button>
+      <div id="tb-actions">
+        <div id="tb-spacer"></div>
+        <button id="btn-delete" class="hidden" title="Delete note">Delete</button>
+        <button id="btn-done">Save</button>
+      </div>
     </div>
   
   </div>
@@ -518,8 +548,8 @@
       var html = e.data.content || '';
       html = html.replace(/src=(["'])\\/notes\\/images\\//g, 'src=\$1' + API_BASE + '/notes/images/');
       editor.innerHTML = html;
-      var lbl = document.getElementById('ticker-label');
-      if (lbl && e.data.title) lbl.textContent = e.data.title;
+      var titleInput = document.getElementById('ticker-label-input');
+      if (titleInput && (e.data.title || '').trim()) titleInput.value = String(e.data.title).trim();
       document.querySelectorAll('.img-remove, .vid-remove').forEach(attachRemoveBtn);
       var deleteBtn = document.getElementById('btn-delete');
       if (deleteBtn) deleteBtn.classList.remove('hidden');
@@ -533,26 +563,64 @@
   // ── Persistence via postMessage to parent ──────────────────────────────────
   function saveToParent(html) {
     window.parent.postMessage({ source: 'ws-annot', action: 'set', key: STORAGE_KEY, value: html }, '*');
+    var titleInput = document.getElementById('ticker-label-input');
+    var title = (titleInput && titleInput.value != null) ? String(titleInput.value).trim() : '';
     var savePromise;
     if (EDIT_EXISTING_CACHE_KEY) {
       savePromise = fetch(API_BASE + '/notes/' + encodeURIComponent(EDIT_EXISTING_CACHE_KEY), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: html })
-      }).catch(function() {});
+        body: JSON.stringify({ content: html, title: title })
+      }).then(function(res) {
+        if (!res.ok) throw new Error(res.status === 404 ? 'Note not found' : 'Update failed');
+        return res;
+      }).catch(function(err) {
+        showSaveError(err.message);
+        throw err;
+      });
     } else {
+      if (!SEC_ID || !TICKER) {
+        showSaveError('sec_id and ticker are required. Open a security details page to add a note.');
+        return Promise.reject(new Error('sec_id and ticker required'));
+      }
       savePromise = fetch(API_BASE + '/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: TICKER, company_name: COMPANY_NAME || null, content: html, sec_id: SEC_ID || null })
-      }).catch(function() {});
+        body: JSON.stringify({ ticker: TICKER, company_name: COMPANY_NAME || null, content: html, sec_id: SEC_ID, title: title || null })
+      }).then(function(res) {
+        if (res.status === 400) {
+          return res.json().then(function(body) {
+            var msg = (body && body.detail) ? (typeof body.detail === 'string' ? body.detail : 'sec_id and ticker are required') : 'sec_id and ticker are required';
+            throw new Error(msg);
+          });
+        }
+        if (!res.ok) throw new Error('Save failed');
+        return res;
+      }).catch(function(err) {
+        showSaveError(err.message);
+        throw err;
+      });
     }
     const ind = document.getElementById('save-indicator');
     ind.textContent = 'Saved';
     ind.classList.add('saved');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function() { ind.textContent = '—'; ind.classList.remove('saved'); }, 2000);
-    return savePromise;
+    return savePromise.then(function(res) {
+      try {
+        // Opaque-origin iframe cannot access parent.document; use postMessage so parent dispatches ws-note-saved
+        window.parent.postMessage({ source: 'ws-annot', action: 'note-saved' }, '*');
+      } catch (_) {}
+      return res;
+    });
+  }
+  function showSaveError(msg) {
+    var ind = document.getElementById('save-indicator');
+    if (ind) { ind.textContent = 'Error'; ind.classList.remove('saved'); ind.style.color = 'var(--danger)'; }
+    setTimeout(function() {
+      if (ind) { ind.textContent = '—'; ind.style.color = ''; }
+    }, 4000);
+    console.warn('[ws-annot]', msg);
   }
   
   function loadFromParent() {
@@ -580,6 +648,10 @@
   
   // Auto-save on input
   editor.addEventListener('input', () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveToParent(editor.innerHTML), 800);
+  });
+  document.getElementById('ticker-label-input').addEventListener('input', () => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => saveToParent(editor.innerHTML), 800);
   });
@@ -853,7 +925,7 @@
       .then(function(res) {
         if (res.status === 404) throw new Error('Note not found');
         if (!res.ok) throw new Error('Delete failed');
-        window.parent.postMessage({ source: 'ws-annot', action: 'close' }, '*');
+        window.parent.postMessage({ source: 'ws-annot', action: 'noteDeleted' }, '*');
       })
       .catch(function(err) {
         deleteBtn.disabled = false;
@@ -889,7 +961,7 @@
 
       const ticker = existingNote ? (existingNote.ticker || getTicker()) : getTicker();
       const companyName = existingNote ? (existingNote.companyName || existingNote.title || getCompanyName()) : getCompanyName();
-      const secId = getSecIdFromUrl();
+      const secId = existingNote && existingNote.sec_id ? existingNote.sec_id : getSecIdFromUrl();
       const htmlContent = buildHTML(ticker, companyName, secId);
       const blob = new Blob([htmlContent], { type: 'text/html' });
       const blobUrl = URL.createObjectURL(blob);
@@ -942,7 +1014,9 @@
               action: 'initExisting',
               cache_key: existingNote.cache_key,
               content: existingNote.content || '',
-              title: existingNote.title || ''
+              title: existingNote.title || '',
+              sec_id: existingNote.sec_id || null,
+              ticker: existingNote.ticker || null
             }, '*');
           } catch (_) {}
         });
@@ -957,10 +1031,13 @@
   
       // ── Close via postMessage from iframe ────────────────────────────────────
       window.addEventListener('message', (e) => {
-        if (e.data?.source === 'ws-annot' && e.data.action === 'close') {
+        if (e.data?.source === 'ws-annot' && (e.data.action === 'close' || e.data.action === 'noteDeleted')) {
           const url = container.getAttribute('data-blob-url');
           container.remove();
           if (url) URL.revokeObjectURL(url);
+          if (e.data.action === 'noteDeleted') {
+            document.dispatchEvent(new CustomEvent('deep-search-result-received'));
+          }
         }
       });
   
@@ -1201,7 +1278,7 @@
   
     // Update toggle label/state when panel is closed via its own close button
     window.addEventListener('message', (e) => {
-      if (e.data?.source === 'ws-annot' && e.data.action === 'close') {
+      if (e.data?.source === 'ws-annot' && (e.data.action === 'close' || e.data.action === 'noteDeleted')) {
         const btn = document.getElementById('ws-annot-toggle');
         if (!btn) return;
         if (btn.getAttribute('role') === 'tab') {

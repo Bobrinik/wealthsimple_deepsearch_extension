@@ -10,14 +10,13 @@ Six Tampermonkey userscripts inject UI enhancements into `my.wealthsimple.com`. 
 
 | File | Script name | `@match` | `@run-at` | Role |
 |---|---|---|---|---|
-| `grease_monkey.user.js` | About Section – Deep Research Button | `*://*/*` | `document-idle` | Injects "Deep Research" button under the About section |
-| `greese_monkey.notes.js` | Wealthsimple Notes Panel | `*.wealthsimple.com/app/security-details/*` | `document-start` | Left-side panel listing all saved research notes |
-| `greese_monkey.add_note.js` | Wealthsimple Stock Annotations | `*.wealthsimple.com/app/security-details/*` | `document-end` | Floating rich-text note editor (sandboxed iframe) |
-| `greese_monkey.news.js` | News Section – High Density Override | `*://*/*` | `document-idle` | Replaces native news section with high-density feed |
-| `greese_monkey.analysis_board.js` | Wealthsimple Excalidraw | `*.wealthsimple.com/app/security-details/*` | `document-end` | Floating draggable Excalidraw whiteboard (sandboxed iframe) |
-| `greese_monkey.hide_chat.js` | Wealthsimple Chat Nuker | `*.wealthsimple.com/*` | `document-start` | Blocks/removes the Decagon AI chat widget |
+| `deep_search.js` | About Section – Deep Research Button | `*://*/*` | `document-idle` | Injects "Deep Research" button under the About section |
+| `notes_panel.js` | Wealthsimple Notes Panel | `*.wealthsimple.com/app/security-details/*` | `document-start` | Left-side panel listing all saved research notes |
+| `add_note_button.js` | Wealthsimple Stock Annotations | `*.wealthsimple.com/app/security-details/*` | `document-end` | Floating rich-text note editor (sandboxed iframe) |
+| `enhanced_news.js` | News Section – High Density Override | `*://*/*` | `document-idle` | Replaces native news section with high-density feed |
+| `hide_chat.js` | Wealthsimple Chat Nuker | `*.wealthsimple.com/*` | `document-start` | Blocks/removes the Decagon AI chat widget |
 
-All scripts use **`@grant none`**, running in page context with plain `fetch()` (no `GM_xmlhttpRequest`). This is intentional — see `greese_monkey_gotchas.md`.
+All scripts use **`@grant none`**, running in page context with plain `fetch()` (no `GM_xmlhttpRequest`). This is intentional — see [`docs/greese_monkey_gotchas.md`](../docs/greese_monkey_gotchas.md).
 
 ---
 
@@ -31,11 +30,11 @@ Base URL: http://localhost:8000
 
 | Endpoint | Method | Used by |
 |---|---|---|
-| `/health` | GET | `grease_monkey.user.js` |
-| `/run` | POST `{ task, sec_id }` | `grease_monkey.user.js` |
-| `/notes` | GET | `greese_monkey.notes.js` |
-| `/notes/:cache_key` | DELETE | `greese_monkey.notes.js` |
-| `/news?symbol=&limit=` | GET | `greese_monkey.news.js` |
+| `/health` | GET | `deep_search.js` |
+| `/run` | POST `{ task, sec_id }` | `deep_search.js` |
+| `/notes` | GET | `notes_panel.js` |
+| `/notes/:cache_key` | DELETE | `notes_panel.js` |
+| `/news?symbol=&limit=` | GET | `enhanced_news.js` |
 
 The server must include CORS headers allowing `https://my.wealthsimple.com`.
 
@@ -48,42 +47,42 @@ Scripts cannot `import` each other. They communicate via two mechanisms:
 ### 1. DOM Custom Events (script ↔ script, same window)
 
 ```
-grease_monkey.user.js
+deep_search.js
   └─ document.dispatchEvent('deep-search-result-received', { result, sec_id })
-        └──► greese_monkey.notes.js listens → refreshes note list via GET /notes
+        └──► notes_panel.js listens → refreshes note list via GET /notes
 
-greese_monkey.notes.js
+notes_panel.js
   └─ window.dispatchEvent('ws-open-note-edit', { cache_key, content, title })
-        └──► greese_monkey.add_note.js listens → loads note into editor panel
+        └──► add_note_button.js listens → loads note into editor panel
 ```
 
 **Flow: user clicks Deep Research → result saved → panel refreshes automatically**
 
-1. User clicks "Deep Research" button (`grease_monkey.user.js`)
+1. User clicks "Deep Research" button (`deep_search.js`)
 2. Script POSTs to `/run`, receives AI result
 3. Dispatches `deep-search-result-received` on `document`
-4. `greese_monkey.notes.js` catches event, re-fetches `GET /notes`, re-renders list
+4. `notes_panel.js` catches event, re-fetches `GET /notes`, re-renders list
 
 **Flow: user clicks note in panel → editor opens**
 
-1. User clicks a note item in the left panel (`greese_monkey.notes.js`)
+1. User clicks a note item in the left panel (`notes_panel.js`)
 2. Dispatches `ws-open-note-edit` on `window` with `{ cache_key, content, title }`
-3. `greese_monkey.add_note.js` catches event, calls `injectPanel({ ... })` to open/populate editor
+3. `add_note_button.js` catches event, calls `injectPanel({ ... })` to open/populate editor
 
 ### 2. `postMessage` Bridge (iframe ↔ parent page)
 
-`greese_monkey.add_note.js` renders its editor inside a sandboxed iframe (blob URL, no `allow-same-origin`). Because the iframe has an opaque origin, it cannot access `localStorage` directly. The parent page acts as a storage proxy:
+`add_note_button.js` renders its editor inside a sandboxed iframe (blob URL, no `allow-same-origin`). Because the iframe has an opaque origin, it cannot access `localStorage` directly. The parent page acts as a storage proxy:
 
 ```
 iframe (ws-annot editor)
   └─ postMessage({ source: 'ws-annot', action: 'get'|'set', key, value }, '*')
-        └──► parent window listener in greese_monkey.add_note.js
+        └──► parent window listener in add_note_button.js
                ├─ 'set' → localStorage.setItem(key, value)
                └─ 'get' → e.source.postMessage({ source: 'ws-annot-reply', key, value }, '*')
                                └──► iframe receives reply, continues
 ```
 
-`greese_monkey.analysis_board.js` (Excalidraw) does **not** implement this bridge — drawings are lost on navigation (opaque origin limitation, documented in gotchas).
+(Excalidraw / analysis board, if present) does **not** implement this bridge — drawings are lost on navigation (opaque origin limitation, documented in gotchas).
 
 ---
 
@@ -92,7 +91,7 @@ iframe (ws-annot editor)
 Scripts must inject UI into a React SPA that re-renders aggressively and navigates without full page reloads. Three patterns are used:
 
 ### Pattern A — Polling loop (`setInterval` tick)
-Used by: `grease_monkey.user.js`, `greese_monkey.news.js`
+Used by: `deep_search.js`, `enhanced_news.js`
 
 ```
 setInterval(tick, 600ms)
@@ -108,7 +107,7 @@ tick():
 This handles initial load, SPA navigation, and React re-renders with zero navigation detection logic.
 
 ### Pattern B — MutationObserver + polling fallback
-Used by: `greese_monkey.notes.js`
+Used by: `notes_panel.js`
 
 ```
 DOMContentLoaded / readyState check
@@ -119,20 +118,20 @@ DOMContentLoaded / readyState check
 ```
 
 ### Pattern C — MutationObserver only (simple)
-Used by: `greese_monkey.analysis_board.js`, `greese_monkey.hide_chat.js`
+Used by: `hide_chat.js`
 
 ```
 MutationObserver on documentElement (childList + subtree)
   └─ on any mutation → check URL / nuke elements
 ```
 
-`greese_monkey.hide_chat.js` also adds a 1500ms `setInterval` as a belt-and-suspenders fallback.
+`hide_chat.js` also adds a 1500ms `setInterval` as a belt-and-suspenders fallback.
 
 ---
 
 ## Sandboxed Iframe Pattern
 
-Both `greese_monkey.add_note.js` and `greese_monkey.analysis_board.js` render complex third-party UI in sandboxed iframes to isolate their DOM and avoid Wealthsimple's CSP.
+`add_note_button.js` (and any analysis board script) render complex third-party UI in sandboxed iframes to isolate their DOM and avoid Wealthsimple's CSP.
 
 ```
 Parent page (my.wealthsimple.com)
@@ -153,14 +152,13 @@ Key constraints:
 ## Execution Order on Page Load
 
 ```
-document-start  │  greese_monkey.hide_chat.js   (blocks chat widget before DOM exists)
-                │  greese_monkey.notes.js        (injects styles immediately, waits for #root)
+document-start  │  hide_chat.js      (blocks chat widget before DOM exists)
+                │  notes_panel.js    (injects styles immediately, waits for #root)
                 │
-document-idle   │  grease_monkey.user.js         (starts polling for About section)
-                │  greese_monkey.news.js          (starts polling for News section)
+document-idle   │  deep_search.js    (starts polling for About section)
+                │  enhanced_news.js  (starts polling for News section)
                 │
-document-end    │  greese_monkey.add_note.js     (injects annotation panel)
-                │  greese_monkey.analysis_board.js (injects Excalidraw panel)
+document-end    │  add_note_button.js (injects annotation panel)
 ```
 
 ---
@@ -172,43 +170,30 @@ document-end    │  greese_monkey.add_note.js     (injects annotation panel)
 │                my.wealthsimple.com page                 │
 │                                                         │
 │  ┌──────────────────┐   deep-search-result-received    │
-│  │  grease_monkey   │─────────────────────────────────►│
-│  │  .user.js        │   (document CustomEvent)         │
+│  │  deep_search.js  │─────────────────────────────────►│
+│  │                  │   (document CustomEvent)         │
 │  │                  │◄──────────────┐                  │
 │  │  POST /run       │               │                  │
 │  │  GET  /health    │    ┌──────────┴──────────┐       │
-│  └──────────────────┘    │  greese_monkey      │       │
-│                          │  .notes.js          │       │
-│  ┌──────────────────┐    │                     │       │
-│  │  greese_monkey   │◄───│  GET  /notes        │       │
-│  │  .add_note.js    │    │  DELETE /notes/:key │       │
-│  │                  │    └─────────────────────┘       │
+│  └──────────────────┘    │  notes_panel.js     │       │
+│                          │                     │       │
+│  ┌──────────────────┐    └─────────────────────┘       │
+│  │ add_note_button  │◄─── GET  /notes, DELETE /notes   │
+│  │      .js         │                                  │
 │  │  ws-open-note-   │◄── ws-open-note-edit             │
 │  │  edit listener   │    (window CustomEvent)          │
-│  │                  │                                  │
 │  │  ┌─────────────┐ │  postMessage (ws-annot)          │
-│  │  │  blob iframe│◄┤►────────────────────────────────►│
-│  │  │  (editor)   │ │  localStorage bridge             │
+│  │  │  blob iframe│◄┤►  localStorage bridge            │
+│  │  │  (editor)   │ │                                  │
 │  │  └─────────────┘ │                                  │
 │  └──────────────────┘                                  │
 │                                                         │
-│  ┌──────────────────┐                                  │
-│  │  greese_monkey   │  GET /news?symbol=...            │
-│  │  .news.js        │──────────────────────────────────►│
+│  ┌──────────────────┐  GET /news?symbol=...            │
+│  │ enhanced_news.js │──────────────────────────────────►│
 │  └──────────────────┘                                  │
 │                                                         │
-│  ┌──────────────────┐                                  │
-│  │  greese_monkey   │  (no API calls, no events)       │
-│  │  .analysis_board │                                  │
-│  │  ┌─────────────┐ │                                  │
-│  │  │  blob iframe│ │                                  │
-│  │  │ (Excalidraw)│ │                                  │
-│  │  └─────────────┘ │                                  │
-│  └──────────────────┘                                  │
-│                                                         │
-│  ┌──────────────────┐                                  │
-│  │  greese_monkey   │  (no API calls, no events)       │
-│  │  .hide_chat.js   │  blocks chat widget DOM/scripts  │
+│  ┌──────────────────┐  (no API calls, no events)       │
+│  │   hide_chat.js   │  blocks chat widget DOM/scripts  │
 │  └──────────────────┘                                  │
 └─────────────────────────────────────────────────────────┘
                               │

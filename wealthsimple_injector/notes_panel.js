@@ -158,11 +158,11 @@
         margin: 0 20px;
       }
 
-      /* Grouping by sec_id */
-      .ws-notes-sec-group {
+      /* Grouping by ticker */
+      .ws-notes-ticker-group {
         margin-bottom: 4px;
       }
-      .ws-notes-sec-group-header {
+      .ws-notes-ticker-group-header {
         padding: 8px 20px 4px;
         font-size: 11px;
         font-weight: 600;
@@ -173,6 +173,59 @@
         overflow: hidden;
         text-overflow: ellipsis;
         cursor: default;
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .ws-notes-ticker-group-header-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ws-notes-ticker-view-company {
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        border-radius: 4px;
+        color: #94908d;
+        cursor: pointer;
+        transition: color 0.12s ease, background 0.12s ease;
+      }
+      .ws-notes-ticker-view-company:hover {
+        color: #f5f4f4;
+        background: rgba(255,255,255,0.08);
+      }
+      .ws-notes-ticker-view-company svg {
+        width: 14px;
+        height: 14px;
+      }
+      .ws-notes-sec-id-tooltip {
+        position: absolute;
+        left: 20px;
+        bottom: 100%;
+        margin-bottom: 4px;
+        padding: 6px 10px;
+        background: #1f1f1f;
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 500;
+        color: #94908d;
+        white-space: nowrap;
+        z-index: 10;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.12s ease;
+      }
+      .ws-notes-ticker-group-header:hover .ws-notes-sec-id-tooltip.visible {
+        opacity: 1;
       }
       .ws-note-item.ws-note-item--under-sec {
         padding-left: 28px;
@@ -310,9 +363,15 @@
           const fullText = stripHtml(n.result || '');
           var preview = fullText.replace(/\s+/g, ' ').slice(0, 120);
           if (preview.length === 120) preview += '...';
+          var displayTitle = (n.ticker && String(n.ticker).trim()) || '';
+          if (!displayTitle && n.cache_key && n.cache_key.indexOf('ws-annot-') === 0) {
+            displayTitle = n.cache_key.slice(9).trim(); // strip "ws-annot-"
+          }
+          if (!displayTitle) displayTitle = (n.cache_key || 'Unknown').trim();
+          var noteTitle = (n.title && String(n.title).trim()) || displayTitle;
           return {
             cache_key: n.cache_key || '',
-            title: (n.cache_key || 'Unknown').trim(),
+            title: noteTitle,
             preview: preview || 'No preview',
             content: fullText || 'No content',
             rawContent: n.result || '', // keep raw (e.g. HTML) for opening in add_note editor
@@ -320,6 +379,7 @@
             dateStr: formatDate(n.created_at),
             pinned: false,
             sec_id: n.sec_id || null,
+            ticker: (n.ticker && String(n.ticker).trim()) || null,
           };
         });
         return { notes: notes };
@@ -333,24 +393,33 @@
       return match ? match[1] : '';
     }
 
-    /** Groups notes by sec_id. Returns array of { secId: string, notes: note[] }. */
-    function groupNotesBySecId(notes) {
+    /** Derive display ticker from sec_id when API doesn't provide ticker (e.g. "NYSE-WCP" -> "WCP"). */
+    function tickerFromSecId(secId) {
+      if (!secId || typeof secId !== 'string') return null;
+      var s = secId.trim();
+      if (!s) return null;
+      var dash = s.indexOf('-');
+      if (dash !== -1 && dash < s.length - 1) return s.slice(dash + 1).trim();
+      return s;
+    }
+
+    /** Groups notes by ticker (display name). Returns array of { ticker: string, secId: string|null, notes: note[] }. */
+    function groupNotesByTicker(notes) {
       var map = Object.create(null);
       var order = [];
       for (var i = 0; i < notes.length; i++) {
         var n = notes[i];
-        var key = (n.sec_id && String(n.sec_id).trim()) || '\0other';
+        var displayTicker = (n.ticker && String(n.ticker).trim()) || tickerFromSecId(n.sec_id) || (n.sec_id && String(n.sec_id).trim()) || '\0other';
+        var key = displayTicker;
         if (!map[key]) {
-          map[key] = [];
+          map[key] = { ticker: key === '\0other' ? 'Other' : key, secId: n.sec_id || null, notes: [] };
           order.push(key);
         }
-        map[key].push(n);
+        map[key].notes.push(n);
+        if (n.sec_id && !map[key].secId) map[key].secId = n.sec_id;
       }
-      return order.map(function(key) {
-        return {
-          secId: key === '\0other' ? null : key,
-          notes: map[key]
-        };
+      return order.map(function(k) {
+        return map[k];
       });
     }
   
@@ -533,15 +602,49 @@
           list.innerHTML = '<div class="ws-note-item" style="color:#94908d;cursor:default;">No notes to show</div>';
           return;
         }
-        var groups = groupNotesBySecId(arr);
+        var groups = groupNotesByTicker(arr);
+        var hoverTimer = null;
         groups.forEach(function(grp, groupIdx) {
-          var secLabel = grp.secId != null ? grp.secId : 'Other';
           var groupWrap = document.createElement('div');
-          groupWrap.className = 'ws-notes-sec-group';
+          groupWrap.className = 'ws-notes-ticker-group';
           var header = document.createElement('div');
-          header.className = 'ws-notes-sec-group-header';
-          header.textContent = secLabel;
-          header.title = secLabel;
+          header.className = 'ws-notes-ticker-group-header';
+          var headerText = document.createElement('span');
+          headerText.className = 'ws-notes-ticker-group-header-text';
+          headerText.textContent = grp.ticker;
+          headerText.title = grp.ticker;
+          header.appendChild(headerText);
+          if (grp.secId) {
+            var viewBtn = document.createElement('button');
+            viewBtn.type = 'button';
+            viewBtn.className = 'ws-notes-ticker-view-company';
+            viewBtn.title = 'View company';
+            viewBtn.setAttribute('aria-label', 'View company');
+            viewBtn.innerHTML = '<svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+            viewBtn.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              window.location.href = 'https://my.wealthsimple.com/app/security-details/' + encodeURIComponent(grp.secId);
+            });
+            header.appendChild(viewBtn);
+          }
+          if (grp.secId) {
+            var tooltip = document.createElement('span');
+            tooltip.className = 'ws-notes-sec-id-tooltip';
+            tooltip.textContent = grp.secId;
+            header.appendChild(tooltip);
+            header.addEventListener('mouseenter', function() {
+              var t = grp.secId;
+              hoverTimer = setTimeout(function() {
+                tooltip.classList.add('visible');
+              }, 700);
+            });
+            header.addEventListener('mouseleave', function() {
+              clearTimeout(hoverTimer);
+              hoverTimer = null;
+              tooltip.classList.remove('visible');
+            });
+          }
           groupWrap.appendChild(header);
           grp.notes.forEach(function(note, idx) {
             const item = document.createElement('div');
@@ -559,7 +662,9 @@
                 detail: {
                   cache_key: note.cache_key,
                   content: note.rawContent || note.content,
-                  title: note.title
+                  title: note.title,
+                  sec_id: note.sec_id || null,
+                  ticker: note.ticker || null
                 }
               }));
             });
@@ -602,6 +707,19 @@
 
       // Refresh notes when Deep Research script reports a new result
       document.addEventListener('deep-search-result-received', function() {
+        fetchNotes().then(function(result) {
+          if (result.error) {
+            updateSubtitle(notes.length, result.error);
+            return;
+          }
+          notes = result.notes || [];
+          updateSubtitle(notes.length, null);
+          render(notes);
+        });
+      });
+
+      // Refresh notes when add-note panel saves (create/update)
+      document.addEventListener('ws-note-saved', function() {
         fetchNotes().then(function(result) {
           if (result.error) {
             updateSubtitle(notes.length, result.error);
